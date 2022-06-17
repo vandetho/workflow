@@ -14,14 +14,19 @@ class Definition {
      * @param {string|string[]|null} initialPlaces
      * @param {MetadataStoreInterface|null} metadataStore
      */
-    public constructor(places: string[], transitions: Transition[], initialPlaces: string | string[] | null = null, metadataStore: MetadataStoreInterface | null = null) {
+    public constructor(
+        places: string[],
+        transitions: Transition[],
+        initialPlaces: string | string[] | null = null,
+        metadataStore: MetadataStoreInterface | null = null,
+    ) {
         places.forEach((place) => {
             this.addPlace(place);
-        })
+        });
 
         transitions.forEach((transition) => {
             this.addTransition(transition);
-        })
+        });
 
         this.setInitialPlaces(initialPlaces);
 
@@ -57,7 +62,7 @@ class Definition {
         if (!places) {
             return;
         }
-        const initialPlaces = Array.isArray(places) ? places : [places]
+        const initialPlaces = Array.isArray(places) ? places : [places];
 
         initialPlaces.forEach((place) => {
             if (this.places[place] === undefined) {
@@ -95,4 +100,4 @@ class Definition {
     }
 }
 
-export default Definition
+export default Definition;

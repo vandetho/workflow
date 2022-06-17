@@ -11,7 +11,11 @@ class InMemoryMetadataStore implements MetadataStoreInterface {
      * @param { [key: string]: any} placesMetadata
      * @param {Map<Transition, { [key: string]: any}>|null} transitionsMetadata
      */
-    public constructor(workflowMetadata: { [key: string]: any } = {}, placesMetadata: { [key: string]: any } = {}, transitionsMetadata: Map<Transition, { [key: string]: any }> | null = null) {
+    public constructor(
+        workflowMetadata: { [key: string]: any } = {},
+        placesMetadata: { [key: string]: any } = {},
+        transitionsMetadata: Map<Transition, { [key: string]: any }> | null = null,
+    ) {
         this.workflowMetadata = workflowMetadata;
         this.placesMetadata = placesMetadata;
         this.transitionsMetadata = transitionsMetadata ?? new Map<Transition, { [key: string]: any }>();
@@ -34,7 +38,8 @@ class InMemoryMetadataStore implements MetadataStoreInterface {
             return this.getWorkflowMetadata()[key] ?? null;
         }
 
-        const metadataBag = typeof subject === 'string' ? this.getPlaceMetadata(subject) : this.getTransitionMetadata(subject);
+        const metadataBag =
+            typeof subject === 'string' ? this.getPlaceMetadata(subject) : this.getTransitionMetadata(subject);
 
         return metadataBag[key] ?? null;
     }

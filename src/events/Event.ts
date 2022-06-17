@@ -1,6 +1,5 @@
 import Marking from '../Marking';
 import Transition from '../Transition';
-import { WorkflowInterface } from '../WorkflowInterface';
 import Workflow from '../Workflow';
 import { Context } from 'workflow';
 
