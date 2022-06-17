@@ -4,6 +4,7 @@ import Transition from './Transition';
 import Definition from './Definition';
 import { MarkingStoreInterface } from './markingStore';
 import { MetadataStoreInterface } from './metadata';
+import { Context } from 'workflow';
 
 export interface WorkflowInterface {
     /**
@@ -11,37 +12,37 @@ export interface WorkflowInterface {
      *
      * @throws LogicError
      */
-      getMarking(subject: any): Marking;
+    getMarking(subject: any): Marking;
 
     /**
      * Returns true if the transition is enabled.
      */
-      can(subject: any,  transitionName: string): boolean;
+    can(subject: any, transitionName: string): boolean;
 
     /**
      * Builds a TransitionBlockerList to know why a transition is blocked.
      */
-      buildTransitionBlockerList(subject: any, transitionName: string ): TransitionBlockerList;
+    buildTransitionBlockerList(subject: any, transitionName: string): TransitionBlockerList;
 
     /**
      * Fire a transition.
      *
      * @throws LogicException If the transition is not applicable
      */
-      apply( subject: any, transitionName: string , context: {[key: string]: any}): Marking;
+    apply(subject: any, transitionName: string, context: Context): Marking;
 
     /**
      * Returns all enabled transitions.
      *
      * @return Transition[]
      */
-      getEnabledTransitions(subject: any): Transition[];
+    getEnabledTransitions(subject: any): Transition[];
 
-      getName(): string;
+    getName(): string;
 
-      getDefinition(): Definition;
+    getDefinition(): Definition;
 
-      getMarkingStore(): MarkingStoreInterface;
+    getMarkingStore(): MarkingStoreInterface;
 
-      getMetadataStore(): MetadataStoreInterface;
+    getMetadataStore(): MetadataStoreInterface;
 }

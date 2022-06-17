@@ -1,49 +1,43 @@
 import TransitionBlockerList from '../TransitionBlockerList';
 import Marking from '../Marking';
+import Event from './Event';
+import Transition from '../Transition';
+import TransitionBlocker from '../TransitionBlocker';
+import Workflow from '../Workflow';
 
-class GuardEvent {
-    private transitionBlockerList: TransitionBlockerList;
+class GuardEvent extends Event {
+    private readonly transitionBlockerList: TransitionBlockerList;
 
     /**
      * {@inheritdoc}
      */
-    public  constructor(subject: any,  marking: Marking,  transition: Transition,  workflow: WorkflowInterface|null = null)
-{
-    super(subject, marking, transition, workflow);
+    public constructor(subject: any, marking: Marking, transition: Transition, workflow: Workflow | null = null) {
+        super(subject, marking, transition, workflow);
 
-    this->transitionBlockerList = new TransitionBlockerList();
-}
+        this.transitionBlockerList = new TransitionBlockerList();
+    }
 
-public  getTransition(): Transition
-{
-    return parent::getTransition();
-}
+    public isBlocked(): boolean {
+        return !this.transitionBlockerList.isEmpty();
+    }
 
-public  isBlocked(): bool
-{
-    return !this->transitionBlockerList->isEmpty();
-}
-
-public  setBlocked(bool blocked, string message = null): void
-    {
+    public setBlocked(blocked: boolean, message: string | null = null): void {
         if (!blocked) {
-    this->transitionBlockerList->clear();
+            this.transitionBlockerList.clear();
 
-    return;
-}
+            return;
+        }
 
-this->transitionBlockerList->add(TransitionBlocker::createUnknown(message));
-}
+        this.transitionBlockerList.add(TransitionBlocker.createUnknown(message));
+    }
 
-public  getTransitionBlockerList(): TransitionBlockerList
-{
-    return this->transitionBlockerList;
-}
+    public getTransitionBlockerList(): TransitionBlockerList {
+        return this.transitionBlockerList;
+    }
 
-public  addTransitionBlocker(TransitionBlocker transitionBlocker): void
-    {
-        this->transitionBlockerList->add(transitionBlocker);
-}
+    public addTransitionBlocker(transitionBlocker: TransitionBlocker): void {
+        this.transitionBlockerList.add(transitionBlocker);
+    }
 }
 
 export default GuardEvent;

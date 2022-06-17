@@ -52,7 +52,7 @@ class TransitionBlocker {
      * Creates a blocker that says the transition cannot be made because of an
      * unknown reason.
      */
-    public static createUnknown(message: string) {
+    public static createUnknown(message: string | null) {
         if (null !== message) {
             return new TransitionBlocker(message, this.UNKNOWN);
         }

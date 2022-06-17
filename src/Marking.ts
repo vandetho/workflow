@@ -1,6 +1,8 @@
+import { Context } from 'workflow';
+
 class Marking {
     private places: { [key: string]: 1 } = {};
-    private context: any[] | null = null;
+    private context: Context | null = null;
 
     /**
      * @param {{[key: string]: 1}} representation Keys are the place name and values should be 1
@@ -30,7 +32,7 @@ class Marking {
     /**
      * @internal
      */
-    public setContext(context: any[]): void {
+    public setContext(context: Context): void {
         this.context = context;
     }
 

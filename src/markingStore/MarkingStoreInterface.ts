@@ -9,5 +9,5 @@ export interface MarkingStoreInterface {
     /**
      * Sets a Marking to a subject.
      */
-    setMarking(subject: any, marking: Marking, context: { [key: string]: any }): void;
+    setMarking(subject: any, marking: Marking, context?: { [key: string]: any }): void;
 }

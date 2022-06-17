@@ -1,438 +1,407 @@
+import { WorkflowEvents } from './WorkflowEvents';
+import { MetadataStoreInterface } from './metadata';
+import Definition from './Definition';
+import TransitionBlocker from './TransitionBlocker';
+import MethodMarkingStore from './markingStore/MethodMarkingStore';
+import TransitionBlockerList from './TransitionBlockerList';
+import Marking from './Marking';
+import Transition from './Transition';
+import { MarkingStoreInterface } from './markingStore';
+import { LogicError, NotEnabledTransitionError, UndefinedTransitionError } from './exceptions';
+import {
+    AnnounceEvent,
+    CompletedEvent,
+    EnteredEvent,
+    EnterEvent,
+    GuardEvent,
+    LeaveEvent,
+    TransitionEvent,
+} from './events';
+import { EventEmitter } from 'events';
+import { Context } from 'workflow';
+
 class Workflow {
     public DISABLE_LEAVE_EVENT = 'workflow_disable_leave_event';
-    public  DISABLE_TRANSITION_EVENT = 'workflow_disable_transition_event';
-    public  DISABLE_ENTER_EVENT = 'workflow_disable_enter_event';
-    public  DISABLE_ENTERED_EVENT = 'workflow_disable_entered_event';
-    public  DISABLE_COMPLETED_EVENT = 'workflow_disable_completed_event';
-    public  DISABLE_ANNOUNCE_EVENT = 'workflow_disable_announce_event';
+    public DISABLE_TRANSITION_EVENT = 'workflow_disable_transition_event';
+    public DISABLE_ENTER_EVENT = 'workflow_disable_enter_event';
+    public DISABLE_ENTERED_EVENT = 'workflow_disable_entered_event';
+    public DISABLE_COMPLETED_EVENT = 'workflow_disable_completed_event';
+    public DISABLE_ANNOUNCE_EVENT = 'workflow_disable_announce_event';
 
-    public  DEFAULT_INITIAL_CONTEXT = {'initial': true};
+    public DEFAULT_INITIAL_CONTEXT = { initial: true };
 
-    private  DISABLE_EVENTS_MAPPING = {
-        WorkflowEvents.LEAVE: this.DISABLE_LEAVE_EVENT,
-    WorkflowEvents.TRANSITION: this.DISABLE_TRANSITION_EVENT,
-    WorkflowEvents.ENTER: this.DISABLE_ENTER_EVENT,
-    WorkflowEvents.ENTERED: this.DISABLE_ENTERED_EVENT,
-    WorkflowEvents.COMPLETED: this.DISABLE_COMPLETED_EVENT,
-    WorkflowEvents.ANNOUNCE: this.DISABLE_ANNOUNCE_EVENT,
-};
+    private DISABLE_EVENTS_MAPPING: { [key: string]: string } = {
+        [WorkflowEvents.LEAVE]: this.DISABLE_LEAVE_EVENT,
+        [WorkflowEvents.TRANSITION]: this.DISABLE_TRANSITION_EVENT,
+        [WorkflowEvents.ENTER]: this.DISABLE_ENTER_EVENT,
+        [WorkflowEvents.ENTERED]: this.DISABLE_ENTERED_EVENT,
+        [WorkflowEvents.COMPLETED]: this.DISABLE_COMPLETED_EVENT,
+        [WorkflowEvents.ANNOUNCE]: this.DISABLE_ANNOUNCE_EVENT,
+    };
 
-    private  definition: Definition;
-    private  markingStore: MarkingStoreInterface;
-    private dispatcher: EventDispatcherInterface;
-    private  name: string;
+    private readonly definition: Definition;
+    private readonly markingStore: MarkingStoreInterface;
+    private readonly name: string;
+    private dispatcher: EventEmitter;
+
+    private eventsToDispatch = [];
+
+    public constructor(definition: Definition, markingStore: MarkingStoreInterface | null = null, name = 'unnamed') {
+        this.definition = definition;
+        this.markingStore = markingStore ?? new MethodMarkingStore();
+        this.name = name;
+        this.dispatcher = new EventEmitter();
+    }
 
     /**
-     * When `null` fire all events (the default behaviour).
-     * Setting this to an empty array `[]` means no events are dispatched (except the Guard Event).
-     * Passing an array with WorkflowEvents will allow only those events to be dispatched plus
-     * the Guard Event.
-     *
-     * @var array|string[]|null
+     * {@inheritdoc}
      */
-    private ?array eventsToDispatch = null;
+    public getMarking(subject: any, context: Context = []): Marking {
+        const marking = this.markingStore.getMarking(subject);
 
-    public function __construct( definition: Definition,  markingStore: MarkingStoreInterface|null = null, string name = 'unnamed',  eventsToDispatch: any[]|null = null)
-{
-    this.definition = definition;
-    this.markingStore = markingStore ?? new MethodMarkingStore();
-    this.name = name;
-}
+        // check if the subject is already in the workflow
+        if (!marking.getPlaces()) {
+            if (!this.definition.getInitialPlaces()) {
+                throw new LogicError(`The Marking is empty and there is no initial place for workflow "${this.name}".`);
+            }
+            this.definition.getInitialPlaces().forEach((place) => {
+                marking.mark(place);
+            });
 
-/**
- * {@inheritdoc}
- */
-public function getMarking(object subject, array context = []): Marking
-{
-    marking = this.markingStore.getMarking(subject);
+            this.markingStore.setMarking(subject, marking);
 
-    // check if the subject is already in the workflow
-    if (!marking.getPlaces()) {
-    if (!this.definition.getInitialPlaces()) {
-        throw new LogicException(sprintf('The Marking is empty and there is no initial place for workflow "%s".', this.name));
-    }
-    foreach (this.definition.getInitialPlaces() as place) {
-        marking.mark(place);
-    }
+            if (!context) {
+                context = this.DEFAULT_INITIAL_CONTEXT;
+            }
 
-    // update the subject with the new marking
-    this.markingStore.setMarking(subject, marking);
-
-    if (!context) {
-        context = this.DEFAULT_INITIAL_CONTEXT;
-    }
-
-    this.entered(subject, null, marking, context);
-}
-
-    // check that the subject has a known place
-    places = this.definition.getPlaces();
-    foreach (marking.getPlaces() as placeName => nbToken) {
-    if (!isset(places[placeName])) {
-        message = sprintf('Place "%s" is not valid for workflow "%s".', placeName, this.name);
-        if (!places) {
-            message .= ' It seems you forgot to add places to the current workflow.';
+            this.entered(subject, null, marking, context);
         }
 
-        throw new LogicException(message);
-    }
-}
+        const places = this.definition.getPlaces();
+        Object.keys(marking.getPlaces()).forEach((placeName) => {
+            if (!places[placeName]) {
+                let message = `Place "${placeName}" is not valid for workflow "${this.name}".`;
+                if (!places) {
+                    message += ' It seems you forgot to add places to the current workflow.';
+                }
+                throw new LogicError(message);
+            }
+        });
 
-    return marking;
-}
-
-/**
- * {@inheritdoc}
- */
-public function can(object subject, string transitionName): bool
-{
-    transitions = this.definition.getTransitions();
-    marking = this.getMarking(subject);
-
-    foreach (transitions as transition) {
-    if (transition.getName() !== transitionName) {
-        continue;
+        return marking;
     }
 
-    transitionBlockerList = this.buildTransitionBlockerListForTransition(subject, marking, transition);
-
-    if (transitionBlockerList.isEmpty()) {
-        return true;
-    }
-}
-
-    return false;
-}
-
-/**
- * {@inheritdoc}
- */
-public function buildTransitionBlockerList(object subject, string transitionName): TransitionBlockerList
-{
-    transitions = this.definition.getTransitions();
-    marking = this.getMarking(subject);
-    transitionBlockerList = null;
-
-    foreach (transitions as transition) {
-    if (transition.getName() !== transitionName) {
-        continue;
+    /**
+     * {@inheritdoc}
+     */
+    public can(subject: any, transitionName: string): boolean {
+        const transitions = this.definition.getTransitions();
+        const marking = this.getMarking(subject);
+        return transitions.some((transition) => {
+            if (transition.getName() === transitionName) {
+                const transitionBlockerList = this.buildTransitionBlockerListForTransition(
+                    subject,
+                    marking,
+                    transition,
+                );
+                return transitionBlockerList.isEmpty();
+            }
+            return false;
+        });
     }
 
-    transitionBlockerList = this.buildTransitionBlockerListForTransition(subject, marking, transition);
+    /**
+     * {@inheritdoc}
+     */
+    public buildTransitionBlockerList(subject: any, transitionName: string): TransitionBlockerList | null {
+        const transitions = this.definition.getTransitions();
+        const marking = this.getMarking(subject);
+        let transitionBlockerList = null;
+        for (const transition of transitions) {
+            if (transition.getName() === transitionName) {
+                transitionBlockerList = this.buildTransitionBlockerListForTransition(subject, marking, transition);
 
-    if (transitionBlockerList.isEmpty()) {
+                if (transitionBlockerList.isEmpty()) {
+                    return transitionBlockerList;
+                }
+
+                if (!transitionBlockerList.has(TransitionBlocker.BLOCKED_BY_MARKING)) {
+                    return transitionBlockerList;
+                }
+            }
+        }
+
+        if (!transitionBlockerList) {
+            throw new UndefinedTransitionError(subject, transitionName, this);
+        }
+
         return transitionBlockerList;
     }
 
-    // We prefer to return transitions blocker by something else than
-    // marking. Because it means the marking was OK. Transitions are
-    // deterministic: it's not possible to have many transitions enabled
-    // at the same time that match the same marking with the same name
-    if (!transitionBlockerList.has(TransitionBlocker.BLOCKED_BY_MARKING)) {
-        return transitionBlockerList;
-    }
-}
+    /**
+     * {@inheritdoc}
+     */
+    public apply(subject: any, transitionName: string, context: Context = {}): Marking {
+        const marking = this.getMarking(subject, context);
+        const approvedTransitions: Transition[] = [];
+        let transitionExist = false;
+        let bestTransitionBlockerList: TransitionBlockerList | null = null;
 
-    if (!transitionBlockerList) {
-        throw new UndefinedTransitionException(subject, transitionName, this);
-    }
+        for (const transition of this.definition.getTransitions()) {
+            if (transition.getName() === transitionName) {
+                transitionExist = true;
+                const tmpTransitionBlockerList = this.buildTransitionBlockerListForTransition(
+                    subject,
+                    marking,
+                    transition,
+                );
 
-    return transitionBlockerList;
-}
+                if (tmpTransitionBlockerList.isEmpty()) {
+                    approvedTransitions.push(transition);
+                    continue;
+                }
 
-/**
- * {@inheritdoc}
- */
-public function apply(object subject, string transitionName, array context = []): Marking
-{
-    marking = this.getMarking(subject, context);
+                if (!bestTransitionBlockerList) {
+                    bestTransitionBlockerList = tmpTransitionBlockerList;
+                    continue;
+                }
 
-    transitionExist = false;
-    approvedTransitions = [];
-    bestTransitionBlockerList = null;
+                if (!tmpTransitionBlockerList.has(TransitionBlocker.BLOCKED_BY_MARKING)) {
+                    bestTransitionBlockerList = tmpTransitionBlockerList;
+                }
+            }
+        }
 
-    foreach (this.definition.getTransitions() as transition) {
-    if (transition.getName() !== transitionName) {
-        continue;
-    }
+        if (!transitionExist) {
+            throw new UndefinedTransitionError(subject, transitionName, this, context);
+        }
 
-    transitionExist = true;
+        if (!approvedTransitions.length) {
+            throw new NotEnabledTransitionError(subject, transitionName, this, bestTransitionBlockerList, context);
+        }
 
-    tmpTransitionBlockerList = this.buildTransitionBlockerListForTransition(subject, marking, transition);
+        for (const transition of approvedTransitions) {
+            this.leave(subject, transition, marking, context);
 
-    if (tmpTransitionBlockerList.isEmpty()) {
-        approvedTransitions[] = transition;
-        continue;
-    }
+            context = this.transition(subject, transition, marking, context);
 
-    if (!bestTransitionBlockerList) {
-        bestTransitionBlockerList = tmpTransitionBlockerList;
-        continue;
-    }
+            this.enter(subject, transition, marking, context);
 
-    // We prefer to return transitions blocker by something else than
-    // marking. Because it means the marking was OK. Transitions are
-    // deterministic: it's not possible to have many transitions enabled
-    // at the same time that match the same marking with the same name
-    if (!tmpTransitionBlockerList.has(TransitionBlocker.BLOCKED_BY_MARKING)) {
-        bestTransitionBlockerList = tmpTransitionBlockerList;
-    }
-}
+            this.markingStore.setMarking(subject, marking, context);
 
-    if (!transitionExist) {
-        throw new UndefinedTransitionException(subject, transitionName, this, context);
-    }
+            this.entered(subject, transition, marking, context);
 
-    if (!approvedTransitions) {
-        throw new NotEnabledTransitionException(subject, transitionName, this, bestTransitionBlockerList, context);
-    }
+            this.completed(subject, transition, marking, context);
 
-    foreach (approvedTransitions as transition) {
-    this.leave(subject, transition, marking, context);
+            this.announce(subject, transition, marking, context);
+        }
 
-    context = this.transition(subject, transition, marking, context);
+        marking.setContext(context);
 
-    this.enter(subject, transition, marking, context);
-
-    this.markingStore.setMarking(subject, marking, context);
-
-    this.entered(subject, transition, marking, context);
-
-    this.completed(subject, transition, marking, context);
-
-    this.announce(subject, transition, marking, context);
-}
-
-    marking.setContext(context);
-
-    return marking;
-}
-
-/**
- * {@inheritdoc}
- */
-public function getEnabledTransitions(object subject): array
-{
-    enabledTransitions = [];
-    marking = this.getMarking(subject);
-
-    foreach (this.definition.getTransitions() as transition) {
-    transitionBlockerList = this.buildTransitionBlockerListForTransition(subject, marking, transition);
-    if (transitionBlockerList.isEmpty()) {
-        enabledTransitions[] = transition;
-    }
-}
-
-    return enabledTransitions;
-}
-
-public function getEnabledTransition(object subject, string name): ?Transition
-    {
-        marking = this.getMarking(subject);
-
-        foreach (this.definition.getTransitions() as transition) {
-    if (transition.getName() !== name) {
-        continue;
-    }
-    transitionBlockerList = this.buildTransitionBlockerListForTransition(subject, marking, transition);
-    if (!transitionBlockerList.isEmpty()) {
-        continue;
+        return marking;
     }
 
-    return transition;
-}
+    /**
+     * {@inheritdoc}
+     */
+    public getEnabledTransitions(subject: any): Transition[] {
+        const enabledTransitions: Transition[] = [];
+        const marking = this.getMarking(subject);
+        for (const transition of this.definition.getTransitions()) {
+            const transitionBlockerList = this.buildTransitionBlockerListForTransition(subject, marking, transition);
 
-return null;
-}
+            if (transitionBlockerList.isEmpty()) {
+                enabledTransitions.push(transition);
+            }
+        }
 
-/**
- * {@inheritdoc}
- */
-public function getName(): string
-{
-    return this.name;
-}
-
-/**
- * {@inheritdoc}
- */
-public function getDefinition(): Definition
-{
-    return this.definition;
-}
-
-/**
- * {@inheritdoc}
- */
-public function getMarkingStore(): MarkingStoreInterface
-{
-    return this.markingStore;
-}
-
-/**
- * {@inheritdoc}
- */
-public function getMetadataStore(): MetadataStoreInterface
-{
-    return this.definition.getMetadataStore();
-}
-
-private function buildTransitionBlockerListForTransition(object subject, Marking marking, Transition transition): TransitionBlockerList
-{
-    foreach (transition.getFroms() as place) {
-    if (!marking.has(place)) {
-        return new TransitionBlockerList([
-            TransitionBlocker.createBlockedByMarking(marking),
-        ]);
-    }
-}
-
-    if (null === this.dispatcher) {
-    return new TransitionBlockerList();
-}
-
-    event = this.guardTransition(subject, marking, transition);
-
-    if (event.isBlocked()) {
-        return event.getTransitionBlockerList();
+        return enabledTransitions;
     }
 
-    return new TransitionBlockerList();
-}
+    public getEnabledTransition(subject: any, name: string): Transition | null {
+        const marking = this.getMarking(subject);
 
-private function guardTransition(object subject, Marking marking, Transition transition): ?GuardEvent
-    {
-        if (null === this.dispatcher) {
-    return null;
-}
+        for (const transition of this.definition.getTransitions()) {
+            if (transition.getName() === name) {
+                const transitionBlockerList = this.buildTransitionBlockerListForTransition(
+                    subject,
+                    marking,
+                    transition,
+                );
+                if (transitionBlockerList.isEmpty()) {
+                    return transition;
+                }
+            }
+        }
+        return null;
+    }
 
-event = new GuardEvent(subject, marking, transition, this);
+    /**
+     * {@inheritdoc}
+     */
+    public getName(): string {
+        return this.name;
+    }
 
-this.dispatcher.dispatch(event, WorkflowEvents.GUARD);
-this.dispatcher.dispatch(event, sprintf('workflow.%s.guard', this.name));
-this.dispatcher.dispatch(event, sprintf('workflow.%s.guard.%s', this.name, transition.getName()));
+    /**
+     * {@inheritdoc}
+     */
+    public getDefinition(): Definition {
+        return this.definition;
+    }
 
-return event;
-}
+    /**
+     * {@inheritdoc}
+     */
+    public getMarkingStore(): MarkingStoreInterface {
+        return this.markingStore;
+    }
 
-private function leave(object subject, Transition transition, Marking marking, array context = []): void
-    {
-        places = transition.getFroms();
+    /**
+     * {@inheritdoc}
+     */
+    public getMetadataStore(): MetadataStoreInterface {
+        return this.definition.getMetadataStore();
+    }
 
+    private buildTransitionBlockerListForTransition(
+        subject: any,
+        marking: Marking,
+        transition: Transition,
+    ): TransitionBlockerList {
+        for (const place of transition.getFroms()) {
+            if (!marking.has(place)) {
+                return new TransitionBlockerList([TransitionBlocker.createBlockedByMarking(marking)]);
+            }
+        }
+
+        const event = this.guardTransition(subject, marking, transition);
+
+        if (event.isBlocked()) {
+            return event.getTransitionBlockerList();
+        }
+
+        return new TransitionBlockerList();
+    }
+
+    private guardTransition(subject: any, marking: Marking, transition: Transition): GuardEvent {
+        const event = new GuardEvent(subject, marking, transition, this);
+
+        this.dispatcher.emit(WorkflowEvents.GUARD, event);
+        this.dispatcher.emit(`workflow.${this.name}.guard`, this.name, event);
+        this.dispatcher.emit(`workflow.${this.name}.guard.${transition.getName()}`, this.name, event);
+
+        return event;
+    }
+
+    private leave(subject: any, transition: Transition, marking: Marking, context: Context = []): void {
+        const places = transition.getFroms();
         if (this.shouldDispatchEvent(WorkflowEvents.LEAVE, context)) {
-    event = new LeaveEvent(subject, marking, transition, this, context);
+            const event = new LeaveEvent(subject, marking, transition, this, context);
 
-    this.dispatcher.dispatch(event, WorkflowEvents.LEAVE);
-    this.dispatcher.dispatch(event, sprintf('workflow.%s.leave', this.name));
+            this.dispatcher.emit(WorkflowEvents.LEAVE, event);
+            this.dispatcher.emit(`workflow.${this.name}.leave`, event);
 
-    foreach (places as place) {
-        this.dispatcher.dispatch(event, sprintf('workflow.%s.leave.%s', this.name, place));
+            for (const place of places) {
+                this.dispatcher.emit(`workflow.${this.name}.leave.${place}`, event);
+            }
+        }
+
+        for (const place of places) {
+            marking.unmark(place);
+        }
     }
-}
 
-foreach (places as place) {
-    marking.unmark(place);
-}
-}
+    private transition(subject: any, transition: Transition, marking: Marking, context: Context): Context {
+        if (!this.shouldDispatchEvent(WorkflowEvents.TRANSITION, context)) {
+            return context;
+        }
 
-private function transition(object subject, Transition transition, Marking marking, array context): array
-{
-    if (!this.shouldDispatchEvent(WorkflowEvents.TRANSITION, context)) {
-    return context;
-}
+        const event = new TransitionEvent(subject, marking, transition, this, context);
 
-    event = new TransitionEvent(subject, marking, transition, this, context);
+        this.dispatcher.emit(WorkflowEvents.TRANSITION, event);
+        this.dispatcher.emit(`workflow.${this.name}.transition`, event);
+        this.dispatcher.emit(`workflow.${this.name}.transition.${transition.getName()}`, event);
 
-    this.dispatcher.dispatch(event, WorkflowEvents.TRANSITION);
-    this.dispatcher.dispatch(event, sprintf('workflow.%s.transition', this.name));
-    this.dispatcher.dispatch(event, sprintf('workflow.%s.transition.%s', this.name, transition.getName()));
+        return event.getContext();
+    }
 
-    return event.getContext();
-}
-
-private function enter(object subject, Transition transition, Marking marking, array context): void
-    {
-        places = transition.getTos();
+    private enter(subject: any, transition: Transition, marking: Marking, context: Context): void {
+        const places = transition.getTos();
 
         if (this.shouldDispatchEvent(WorkflowEvents.ENTER, context)) {
-    event = new EnterEvent(subject, marking, transition, this, context);
+            const event = new EnterEvent(subject, marking, transition, this, context);
 
-    this.dispatcher.dispatch(event, WorkflowEvents.ENTER);
-    this.dispatcher.dispatch(event, sprintf('workflow.%s.enter', this.name));
+            this.dispatcher.emit(WorkflowEvents.ENTER, event);
+            this.dispatcher.emit(`workflow.${this.name}.enter`, event);
 
-    foreach (places as place) {
-        this.dispatcher.dispatch(event, sprintf('workflow.%s.enter.%s', this.name, place));
+            for (const place of places) {
+                this.dispatcher.emit(`workflow.${this.name}.enter.${place}`, event);
+            }
+        }
+
+        for (const place of places) {
+            marking.mark(place);
+        }
     }
-}
 
-foreach (places as place) {
-    marking.mark(place);
-}
-}
-
-private function entered(object subject, ?Transition transition, Marking marking, array context): void
-    {
+    private entered(subject: any, transition: Transition | null, marking: Marking, context: Context): void {
         if (!this.shouldDispatchEvent(WorkflowEvents.ENTERED, context)) {
-    return;
-}
+            return;
+        }
 
-event = new EnteredEvent(subject, marking, transition, this, context);
+        const event = new EnteredEvent(subject, marking, transition, this, context);
 
-this.dispatcher.dispatch(event, WorkflowEvents.ENTERED);
-this.dispatcher.dispatch(event, sprintf('workflow.%s.entered', this.name));
+        this.dispatcher.emit(WorkflowEvents.ENTERED, event);
+        this.dispatcher.emit(`workflow.${this.name}.entered`, event);
 
-foreach (marking.getPlaces() as placeName => nbToken) {
-    this.dispatcher.dispatch(event, sprintf('workflow.%s.entered.%s', this.name, placeName));
-}
-}
-
-private function completed(object subject, Transition transition, Marking marking, array context): void
-    {
-        if (!this.shouldDispatchEvent(WorkflowEvents.COMPLETED, context)) {
-    return;
-}
-
-event = new CompletedEvent(subject, marking, transition, this, context);
-
-this.dispatcher.dispatch(event, WorkflowEvents.COMPLETED);
-this.dispatcher.dispatch(event, sprintf('workflow.%s.completed', this.name));
-this.dispatcher.dispatch(event, sprintf('workflow.%s.completed.%s', this.name, transition.getName()));
-}
-
-private function announce(object subject, Transition initialTransition, Marking marking, array context): void
-    {
-        if (!this.shouldDispatchEvent(WorkflowEvents.ANNOUNCE, context)) {
-    return;
-}
-
-event = new AnnounceEvent(subject, marking, initialTransition, this, context);
-
-this.dispatcher.dispatch(event, WorkflowEvents.ANNOUNCE);
-this.dispatcher.dispatch(event, sprintf('workflow.%s.announce', this.name));
-
-foreach (this.getEnabledTransitions(subject) as transition) {
-    this.dispatcher.dispatch(event, sprintf('workflow.%s.announce.%s', this.name, transition.getName()));
-}
-}
-
-private function shouldDispatchEvent(string eventName, array context): bool
-{
-    if (null === this.dispatcher) {
-    return false;
-}
-
-    if (context[this.DISABLE_EVENTS_MAPPING[eventName]] ?? false) {
-        return false;
+        for (const place of Object.keys(marking.getPlaces())) {
+            this.dispatcher.emit(`workflow.${this.name}.entered.${place}`, event);
+        }
     }
 
-    if (null === this.eventsToDispatch) {
-    return true;
+    private completed(subject: any, transition: Transition, marking: Marking, context: Context): void {
+        if (!this.shouldDispatchEvent(WorkflowEvents.COMPLETED, context)) {
+            return;
+        }
+
+        const event = new CompletedEvent(subject, marking, transition, this, context);
+
+        this.dispatcher.emit(WorkflowEvents.COMPLETED, event);
+        this.dispatcher.emit(`workflow.${this.name}.completed`, event);
+        this.dispatcher.emit(`workflow.${this.name}.completed.${transition.getName()}`, event);
+    }
+
+    private announce(subject: any, initialTransition: Transition, marking: Marking, context: Context): void {
+        if (!this.shouldDispatchEvent(WorkflowEvents.ANNOUNCE, context)) {
+            return;
+        }
+
+        const event = new AnnounceEvent(subject, marking, initialTransition, this, context);
+
+        this.dispatcher.emit(WorkflowEvents.ANNOUNCE, event);
+        this.dispatcher.emit(`workflow.${this.name}.announce`, event);
+
+        for (const transition of this.getEnabledTransitions(subject)) {
+            this.dispatcher.emit(`workflow.${this.name}.announce.${transition.getName()}`, event);
+        }
+    }
+
+    private shouldDispatchEvent(eventName: string, context: Context): boolean {
+        if (context[this.DISABLE_EVENTS_MAPPING[eventName]]) {
+            return false;
+        }
+
+        if (null === this.eventsToDispatch) {
+            return true;
+        }
+
+        if (this.eventsToDispatch.length === 0) {
+            return false;
+        }
+
+        return this.eventsToDispatch.some((event) => eventName === event);
+    }
 }
 
-    if ([] === this.eventsToDispatch) {
-    return false;
-}
-
-    return \in_array(eventName, this.eventsToDispatch, true);
-}
-}
+export default Workflow;

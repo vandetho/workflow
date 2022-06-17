@@ -1,6 +1,7 @@
 import capitalize from 'capitalize';
 import { LogicError } from '../exceptions';
 import Marking from '../Marking';
+import { Context } from 'workflow';
 
 class MethodMarkingStore {
     private readonly singleState: boolean;
@@ -43,7 +44,7 @@ class MethodMarkingStore {
     /**
      * {@inheritdoc}
      */
-    public setMarking(subject: any, marking: Marking, context: { [key: string]: any } = {}) {
+    public setMarking(subject: any, marking: Marking, context: Context = {}) {
         const method = 'set' + capitalize(this.property);
 
         if (typeof subject[method] !== 'function') {
