@@ -1,0 +1,53 @@
+{
+    "name": "company",
+    "type": "workflow",
+    "audit_trail": true,
+    "marking_store": "marking",
+    "supports": "Company",
+    "initial_marking": "new_company",
+    "places": [
+        "new_company", "listing", "adding_employee","updating_information"
+    ],
+    "transitions": {
+        "create_company": {
+            "from": [
+                "new_company"
+            ],
+            "to": [
+                "listing"
+            ]
+        },
+        "add_employee": {
+            "from": [
+                "listing"
+            ],
+            "to": [
+                "adding_employee"
+            ]
+        },
+        "employee_added": {
+            "from": [
+                "adding_employee"
+            ],
+            "to": [
+                "listing"
+            ]
+        },
+        "update_information": {
+            "from": [
+                "listing"
+            ],
+            "to": [
+                "updating_information"
+            ]
+        },
+        "information_updated": {
+            "from": [
+                "updating_information"
+            ],
+            "to": [
+                "listing"
+            ]
+        }
+    }
+}

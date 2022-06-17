@@ -15,12 +15,12 @@ class Definition {
      * @param {MetadataStoreInterface|null} metadataStore
      */
     public constructor(
-        places: string[],
+        places: { [key: string]: string },
         transitions: Transition[],
         initialPlaces: string | string[] | null = null,
         metadataStore: MetadataStoreInterface | null = null,
     ) {
-        places.forEach((place) => {
+        Object.keys(places).forEach((place) => {
             this.addPlace(place);
         });
 

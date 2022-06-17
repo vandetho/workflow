@@ -42,12 +42,18 @@ class Workflow {
     private readonly definition: Definition;
     private readonly markingStore: MarkingStoreInterface;
     private readonly name: string;
+    private readonly eventsToDispatch = [];
+
     private dispatcher: EventEmitter;
 
-    private eventsToDispatch = [];
-
-    public constructor(definition: Definition, markingStore: MarkingStoreInterface | null = null, name = 'unnamed') {
+    public constructor(
+        definition: Definition,
+        markingStore: MarkingStoreInterface | null = null,
+        name = 'unnamed',
+        eventsToDispatch = [],
+    ) {
         this.definition = definition;
+        this.eventsToDispatch = eventsToDispatch;
         this.markingStore = markingStore ?? new MethodMarkingStore();
         this.name = name;
         this.dispatcher = new EventEmitter();
